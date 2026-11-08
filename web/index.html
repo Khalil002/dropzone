@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>dropzone</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">drop<span>zone</span></div>
+    <div id="backend" class="pill" title="Backend serving this page">backend: …</div>
+    <div id="session" class="session"></div>
+  </header>
+
+  <main>
+    <section id="auth" class="card auth">
+      <h2>Get in line</h2>
+      <p class="muted">New accounts get a wallet with signup credit. Admin demo login: <code>admin@dropzone.local</code> / <code>admin1234</code></p>
+      <form id="auth-form">
+        <input name="email" type="email" placeholder="email" required autocomplete="username" />
+        <input name="password" type="password" placeholder="password (8+ chars)" required minlength="8" autocomplete="current-password" />
+        <div class="row">
+          <button type="submit" data-mode="login">Log in</button>
+          <button type="submit" data-mode="register" class="ghost">Create account</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="admin" class="card hidden">
+      <h2>New drop</h2>
+      <form id="drop-form" class="grid">
+        <input name="name" placeholder="name" required maxlength="120" />
+        <input name="priceCents" type="number" min="1" placeholder="price (cents)" required />
+        <input name="totalStock" type="number" min="1" placeholder="stock" required />
+        <input name="startsIn" type="number" min="0" placeholder="starts in (seconds)" value="10" />
+        <input name="description" placeholder="description" class="wide" />
+        <button type="submit">Schedule drop</button>
+      </form>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Drops</h2>
+        <span id="cache" class="muted small"></span>
+      </div>
+      <div id="drops" class="drops"></div>
+    </section>
+
+    <section id="mine" class="split hidden">
+      <div class="card">
+        <h2>Your orders</h2>
+        <ul id="orders" class="list"></ul>
+      </div>
+      <div class="card">
+        <h2>Notifications <span class="muted small">(via RabbitMQ)</span></h2>
+        <ul id="notifications" class="list"></ul>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>
