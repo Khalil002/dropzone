@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    name: unit (${{ matrix.backend }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [spring, express, dotnet]
+    steps:
+      - uses: actions/checkout@v4
+
+      - if: matrix.backend == 'spring'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - if: matrix.backend == 'spring'
+        working-directory: backends/spring
+        run: mvn -B verify
+
+      - if: matrix.backend == 'express'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backends/express/package-lock.json
+      - if: matrix.backend == 'express'
+        working-directory: backends/express
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - if: matrix.backend == 'dotnet'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - if: matrix.backend == 'dotnet'
+        working-directory: backends/dotnet
+        run: dotnet test
+
+  # The same black-box suite runs against every backend on the real stack.
+  contract:
+    name: contract (${{ matrix.backend }})
+    needs: unit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [spring, express, dotnet]
+    env:
+      BACKEND: ${{ matrix.backend }}
+      ADMIT_INTERVAL_MS: "300"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Start the stack
+        run: docker compose up -d --build
+
+      - name: Wait for the API
+        run: |
+          for i in $(seq 1 90); do
+            curl -sf http://localhost:8080/api/health && exit 0
+            sleep 2
+          done
+          exit 1
+
+      - name: Contract tests
+        working-directory: tests/contract
+        env:
+          API_URL: http://localhost:8080/api
+        run: |
+          npm ci
+          npm test
+
+      - name: Flash-sale load test (no overselling)
+        run: USERS=200 STOCK=40 docker compose --profile loadtest run --rm k6
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color api migrate
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
