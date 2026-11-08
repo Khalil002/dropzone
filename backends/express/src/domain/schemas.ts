@@ -14,6 +14,6 @@ export const newDropSchema = z.object({
 });
 
 export const checkoutSchema = z.object({
-  dropId: z.string().uuid(),
+  dropId: z.guid(),
   quantity: z.number().int().min(1).max(2),
 });
