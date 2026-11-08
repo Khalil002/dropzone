@@ -1,0 +1,38 @@
+server:
+  port: ${PORT:8000}
+  shutdown: graceful
+
+spring:
+  application:
+    name: dropzone-spring
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:dropzone}
+    username: ${DB_USER:dropzone}
+    password: ${DB_PASSWORD:dropzone}
+    hikari:
+      maximum-pool-size: 20
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    publisher-confirm-type: simple
+    listener:
+      simple:
+        default-requeue-rejected: false
+        prefetch: 20
+
+app:
+  jwt-secret: ${JWT_SECRET:change-me-to-a-long-random-secret-of-32-bytes}
+  jwt-ttl-sec: ${JWT_TTL_SEC:3600}
+  signup-credit-cents: ${SIGNUP_CREDIT_CENTS:50000}
+  admit-batch: ${ADMIT_BATCH:50}
+  admit-interval-ms: ${ADMIT_INTERVAL_MS:1000}
+  admission-ttl-sec: ${ADMISSION_TTL_SEC:600}
+  rate-limit-max: ${RATE_LIMIT_MAX:20}
+  rate-limit-window-sec: ${RATE_LIMIT_WINDOW_SEC:10}
+  cache-ttl-sec: ${CACHE_TTL_SEC:2}
