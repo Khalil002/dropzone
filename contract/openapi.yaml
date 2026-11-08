@@ -1,0 +1,343 @@
+openapi: 3.0.3
+info:
+  title: dropzone API
+  version: 1.0.0
+  description: |
+    Limited-drop marketplace. Every backend (Spring Boot, Express, ASP.NET Core)
+    implements this exact contract on the same PostgreSQL schema.
+
+    Errors use RFC 7807 problem details with an extra machine-readable `code`.
+servers:
+  - url: http://localhost:8080/api
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Liveness and dependency check
+      security: []
+      responses:
+        "200":
+          description: All dependencies reachable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  backend: { type: string, enum: [spring, express, dotnet] }
+
+  /auth/register:
+    post:
+      summary: Create a customer account (with signup credit)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Credentials" }
+      responses:
+        "201": { $ref: "#/components/responses/Auth" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+
+  /auth/login:
+    post:
+      summary: Exchange credentials for a JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Credentials" }
+      responses:
+        "200": { $ref: "#/components/responses/Auth" }
+        "401": { $ref: "#/components/responses/Problem" }
+
+  /me:
+    get:
+      summary: Current user and wallet balance
+      responses:
+        "200":
+          description: The caller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Problem" }
+
+  /me/notifications:
+    get:
+      summary: Notifications delivered through the message queue
+      responses:
+        "200":
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Notification" }
+
+  /drops:
+    get:
+      summary: List drops (cached in Redis)
+      security: []
+      responses:
+        "200":
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Drop" }
+    post:
+      summary: Create a drop (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewDrop" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Drop" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+
+  /drops/{dropId}:
+    parameters:
+      - $ref: "#/components/parameters/DropId"
+    get:
+      summary: Get one drop
+      security: []
+      responses:
+        "200":
+          description: The drop
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Drop" }
+        "404": { $ref: "#/components/responses/Problem" }
+
+  /drops/{dropId}/queue:
+    parameters:
+      - $ref: "#/components/parameters/DropId"
+    post:
+      summary: Join the waiting room (idempotent; rate limited)
+      description: |
+        Joining twice keeps your original place. A background admitter lets
+        `ADMIT_BATCH` people in every `ADMIT_INTERVAL_MS` once the drop is live.
+      responses:
+        "200":
+          description: Your place
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QueueStatus" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    get:
+      summary: Poll your place in the waiting room
+      responses:
+        "200":
+          description: Your place
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QueueStatus" }
+        "404": { $ref: "#/components/responses/Problem" }
+
+  /orders:
+    get:
+      summary: Your orders
+      responses:
+        "200":
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Order" }
+    post:
+      summary: Check out (requires admission; idempotent; rate limited)
+      description: |
+        Runs in one database transaction: conditional stock decrement, wallet
+        debit with a row lock, double-entry ledger legs, the order row, an
+        outbox event and the stored idempotent response.
+
+        Sending the same `Idempotency-Key` with the same body replays the first
+        successful response with `Idempotent-Replayed: true`. Reusing a key with
+        a different body returns 422.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dropId, quantity]
+              properties:
+                dropId: { type: string, format: uuid }
+                quantity: { type: integer, minimum: 1, maximum: 2 }
+      responses:
+        "201":
+          description: Order confirmed
+          headers:
+            Idempotent-Replayed:
+              schema: { type: string, enum: ["true"] }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "402": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    DropId:
+      in: path
+      name: dropId
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Auth:
+      description: Token and user
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [token, user]
+            properties:
+              token: { type: string }
+              user: { $ref: "#/components/schemas/User" }
+    Problem:
+      description: Error
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    RateLimited:
+      description: Too many requests
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Credentials:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 72 }
+
+    User:
+      type: object
+      required: [id, email, role]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        role: { type: string, enum: [customer, admin] }
+
+    Me:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          required: [balanceCents]
+          properties:
+            balanceCents: { type: integer, format: int64 }
+
+    NewDrop:
+      type: object
+      required: [name, priceCents, totalStock, startsAt]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        priceCents: { type: integer, format: int64, minimum: 1 }
+        totalStock: { type: integer, minimum: 1, maximum: 1000000 }
+        startsAt: { type: string, format: date-time }
+
+    Drop:
+      type: object
+      required: [id, name, description, priceCents, totalStock, remainingStock, startsAt, status]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        priceCents: { type: integer, format: int64 }
+        totalStock: { type: integer }
+        remainingStock: { type: integer }
+        startsAt: { type: string, format: date-time }
+        status: { type: string, enum: [upcoming, live, sold_out] }
+
+    QueueStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [waiting, admitted] }
+        position:
+          type: integer
+          nullable: true
+          description: 1-based place in line while waiting, null once admitted
+
+    Order:
+      type: object
+      required: [id, dropId, quantity, totalCents, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        dropId: { type: string, format: uuid }
+        quantity: { type: integer }
+        totalCents: { type: integer, format: int64 }
+        status: { type: string, enum: [confirmed] }
+        createdAt: { type: string, format: date-time }
+
+    Notification:
+      type: object
+      required: [id, kind, message, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, example: order.confirmed }
+        message: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    Problem:
+      type: object
+      required: [title, status, code]
+      properties:
+        type: { type: string, example: about:blank }
+        title: { type: string }
+        status: { type: integer }
+        code:
+          type: string
+          enum:
+            - VALIDATION_ERROR
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - NOT_FOUND
+            - EMAIL_TAKEN
+            - INVALID_CREDENTIALS
+            - NOT_IN_QUEUE
+            - NOT_ADMITTED
+            - DROP_NOT_LIVE
+            - SOLD_OUT
+            - ALREADY_ORDERED
+            - INSUFFICIENT_FUNDS
+            - IDEMPOTENCY_KEY_MISSING
+            - IDEMPOTENCY_KEY_REUSED
+            - RATE_LIMITED
+        detail: { type: string }
