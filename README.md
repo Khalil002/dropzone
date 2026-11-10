@@ -6,6 +6,21 @@ The same API is implemented three times, in **Spring Boot**, **Node.js/Express**
 
 ![CI](https://github.com/Khalil002/dropzone/actions/workflows/ci.yml/badge.svg)
 
+## Contents
+
+- [Introduction](#introduction)
+- [Interface](#interface)
+- [Architecture](#architecture)
+- [Modular backend](#modular-backend)
+- [Usage](#usage)
+  - [Quick start](#quick-start)
+  - [Self-hosting guide](#self-hosting-guide)
+  - [Configuration](#configuration)
+  - [Running a backend from source](#running-a-backend-from-source)
+  - [Load test](#load-test)
+- [Testing](#testing)
+- [Project layout](#project-layout)
+
 ## Introduction
 
 Flash sales are a classic backend problem: a short burst of extreme concurrency against a tiny amount of stock, real money moving, and clients that retry aggressively. dropzone handles the whole flow:
